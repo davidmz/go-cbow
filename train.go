@@ -66,9 +66,11 @@ func (m *Model) update(context []int, contextVec []float32, target int, label in
 		m.OutputEmb[target][d] += lr * grad * contextVec[d]
 	}
 	// Update input embeddings (распределяем градиент по каждому контекстному слову)
+	k := lr * grad / float32(len(context))
+	oe := m.OutputEmb[target]
 	for _, wid := range context {
 		for d := 0; d < m.Params.EmbeddingDim; d++ {
-			m.InputEmb[wid][d] += lr * grad * m.OutputEmb[target][d] / float32(len(context))
+			m.InputEmb[wid][d] += k * oe[d]
 		}
 	}
 }
