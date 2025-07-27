@@ -2,6 +2,9 @@ package cbow
 
 import (
 	"math"
+	"sync"
+
+	"github.com/davidmz/go-cbow/vmath"
 )
 
 func (m *Model) trainBatch(batch [][]int) {
@@ -53,26 +56,28 @@ func (m *Model) trainExample(context []int, target int) {
 }
 
 func (m *Model) update(context []int, contextVec []float32, target int, label int) {
-	var score float32
-	for d := 0; d < m.Params.EmbeddingDim; d++ {
-		score += contextVec[d] * m.OutputEmb[target][d]
-	}
+	score := vmath.Dot(contextVec, m.OutputEmb[target])
+
 	pred := sigmoid(score)
 	grad := float32(label) - pred
 	lr := float32(m.Params.LearningRate)
+	k := lr * grad
 
 	// Update output embedding
-	for d := 0; d < m.Params.EmbeddingDim; d++ {
-		m.OutputEmb[target][d] += lr * grad * contextVec[d]
-	}
+	vmath.Axpy(m.OutputEmb[target], contextVec, k)
+
 	// Update input embeddings (распределяем градиент по каждому контекстному слову)
-	k := lr * grad / float32(len(context))
+	k = k / float32(len(context))
 	oe := m.OutputEmb[target]
+	wg := sync.WaitGroup{}
+	wg.Add(len(context))
 	for _, wid := range context {
-		for d := 0; d < m.Params.EmbeddingDim; d++ {
-			m.InputEmb[wid][d] += k * oe[d]
-		}
+		go func(wid int) {
+			vmath.Axpy(m.InputEmb[wid], oe, k)
+			wg.Done()
+		}(wid)
 	}
+	wg.Wait()
 }
 
 func sigmoid(x float32) float32 {
